@@ -32,6 +32,7 @@ telegram-post-archive_love/
   parser.py
   publish_max.py
   yandex_album_scraper.py
+  podcast_link_mapper.py
   db.py
   formatter.py
   max_client.py
@@ -151,6 +152,36 @@ python yandex_album_scraper.py \
 - в полностью headless-режиме на сервере Yandex Music может отдавать `SmartCaptcha`;
 - если нужен удалённый IP, можно подать `--proxy-server socks5://...` через SSH SOCKS proxy.
 
+## Безопасная замена podcast-ссылок в базе
+
+После сбора `yandex_album_tracks.json` можно построить безопасный mapping и, при необходимости, применить его к `posts.db`:
+
+```bash
+python podcast_link_mapper.py \
+  --db posts.db \
+  --tracks-json yandex_album_tracks.json \
+  --report-json podcast_link_mapping_report.json
+```
+
+Что делает скрипт:
+
+- находит в базе все `https://t.me/mavestreambot/app?startapp=lovebusiness...`;
+- извлекает название эпизода из anchor text или из заголовка текущего поста;
+- сопоставляет эпизод с Yandex Music не по порядку, а по совпадению названия;
+- сохраняет отчёт с `resolved` и `unresolved` кейсами;
+- в режиме `--apply` переписывает только подтверждённые ссылки.
+
+Применение с backup:
+
+```bash
+python podcast_link_mapper.py \
+  --db posts.db \
+  --tracks-json yandex_album_tracks.json \
+  --report-json podcast_link_mapping_report.json \
+  --apply \
+  --backup-db
+```
+
 ## Git и GitHub
 
 Проект находится в `/home/deploy/app/telegram-post-archive_love` как отдельный git-репозиторий.
@@ -206,6 +237,7 @@ python yandex_album_scraper.py \
 - проект успешно прогнан на канале `andrey_i_vika` в диапазоне `4..158`;
 - GitHub-репозиторий для этого клона создаётся отдельно после фиксации первого результата.
 - добавлен отдельный интерактивный сборщик треков Яндекс Музыки для безопасного построения podcast link mapping.
+- добавлен безопасный mapper для замены `mavestreambot` podcast-ссылок в `posts.db` только по подтверждённым совпадениям названий.
 
 ## Последний реальный прогон
 

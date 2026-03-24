@@ -11,6 +11,7 @@
 - зафиксирован диапазон первого controlled-run: `4..158`;
 - GitHub-репозиторий для этого клона создан.
 - добавлен интерактивный Playwright-сценарий для сбора названий и ссылок треков с альбома Яндекс Музыки.
+- добавлен безопасный `podcast_link_mapper.py` для title-based замены podcast-ссылок в `posts.db`.
 
 Первый реальный прогон выполнен `2026-03-24`.
 
@@ -37,6 +38,7 @@
 - логирование формата `[LEVEL] message`;
 - `.gitignore` и базовая документация для отдельного git-репозитория.
 - `yandex_album_scraper.py` для интерактивного получения `track_id`, `track_url`, `title` с альбома Яндекс Музыки.
+- `podcast_link_mapper.py` для безопасного сопоставления `lovebusiness...` ссылок с Yandex Music track URL.
 
 ## Git-статус
 
@@ -75,6 +77,7 @@ python3 parser.py --channel andrey_i_vika --start 4 --end 158 --db posts.db
 - точный формат ответа `/uploads` и `/messages` на production-аккаунте MAX.
 - канонический public permalink MAX для опубликованных сообщений, если API не отдаёт `url`.
 - полный интерактивный прогон `yandex_album_scraper.py` против живой captcha-сессии Yandex Music.
+- фактический preview/apply прогон `podcast_link_mapper.py` против реального `yandex_album_tracks.json`.
 
 ## Ближайшая проверка
 
@@ -106,3 +109,18 @@ python yandex_album_scraper.py \
 - удаётся ли пройти login/captcha;
 - сохраняются ли `yandex_album_tracks.json` и `yandex_album_tracks.csv`;
 - есть ли в результатах `track_id`, `track_url`, `title` без дублей.
+
+Для безопасной замены podcast-ссылок:
+
+```bash
+python podcast_link_mapper.py \
+  --db posts.db \
+  --tracks-json yandex_album_tracks.json \
+  --report-json podcast_link_mapping_report.json
+```
+
+После запуска проверить:
+
+- сколько `resolved` и `unresolved` ключей попало в отчёт;
+- нет ли ambiguous match по названиям;
+- перед `--apply` устраивает ли отчёт по ранним edge-case ссылкам.

@@ -5,3 +5,5 @@ __pycache__/
 .playwright-yandex-profile/
 yandex_album_tracks.json
 yandex_album_tracks.csv
+podcast_link_mapping_report.json
+posts_backup_before_podcast_links_*.db
