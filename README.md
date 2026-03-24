@@ -125,7 +125,12 @@ python parser.py --channel andrey_i_vika --start 4 --end 158 --db posts.db --dry
 
 ## Git и GitHub
 
-Проект находится в `/home/deploy/app/telegram-post-archive_love` как отдельный рабочий клон исходного архива.
+Проект находится в `/home/deploy/app/telegram-post-archive_love` как отдельный git-репозиторий.
+
+Текущий репозиторий:
+
+- `https://github.com/Sheshenin/telegram-post-archive_love`
+- основная ветка: `main`
 
 Исходный репозиторий-источник:
 
