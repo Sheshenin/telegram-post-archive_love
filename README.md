@@ -100,6 +100,34 @@ python watch_new_posts.py \
   --yandex-ssh-key /path/to/key
 ```
 
+Запуск как `systemd`-демон:
+
+```bash
+sudo cp deploy/systemd/telegram-post-archive-love-watcher.service /etc/systemd/system/
+sudo tee /etc/telegram-post-archive-love-watcher.env >/dev/null <<'EOF'
+CHANNEL=andrey_i_vika
+DB_PATH=/home/deploy/app/telegram-post-archive_love/posts.db
+MAX_TOKEN=YOUR_TOKEN
+MAX_CHAT_ID=id772576559690_biz
+POLL_INTERVAL=30
+DELAY_MIN=3.0
+DELAY_MAX=6.0
+RETRIES=3
+YANDEX_SSH_HOST=31.130.133.235
+YANDEX_SSH_KEY=/root/.ssh/id_ed25519twc
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now telegram-post-archive-love-watcher.service
+sudo systemctl status telegram-post-archive-love-watcher.service
+```
+
+Текущее состояние на `2026-03-25`:
+
+- сервис установлен в `/etc/systemd/system/telegram-post-archive-love-watcher.service`;
+- автозапуск включён;
+- runtime env хранится в `/etc/telegram-post-archive-love-watcher.env`;
+- лог пишется в `watch_new_posts.log`.
+
 ## Данные в SQLite
 
 Таблица `posts` хранит:
@@ -186,6 +214,7 @@ python yandex_album_scraper.py \
 - если точного match в кэше нет, watcher ищет трек по названию в Яндекс Музыке;
 - если основной сервер Яндекс блокирует по региону, watcher может искать через альтернативный SSH-host;
 - если точный track URL не найден, watcher не выдумывает ссылку и оставляет исходную Telegram-ссылку без подмены.
+- для постоянной работы после перезагрузки watcher можно запускать как `systemd`-сервис `telegram-post-archive-love-watcher.service` через внешний env-файл с секретами.
 
 ## Безопасная замена podcast-ссылок в базе
 

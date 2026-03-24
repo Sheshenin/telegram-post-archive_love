@@ -1,0 +1,18 @@
+[Unit]
+Description=Telegram Post Archive Love live watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/deploy/app/telegram-post-archive_love
+EnvironmentFile=/etc/telegram-post-archive-love-watcher.env
+ExecStart=/usr/bin/python3 /home/deploy/app/telegram-post-archive_love/watch_new_posts.py --channel ${CHANNEL} --db ${DB_PATH} --token ${MAX_TOKEN} --chat ${MAX_CHAT_ID} --poll-interval ${POLL_INTERVAL} --delay-min ${DELAY_MIN} --delay-max ${DELAY_MAX} --retries ${RETRIES} --yandex-ssh-host ${YANDEX_SSH_HOST} --yandex-ssh-key ${YANDEX_SSH_KEY}
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/deploy/app/telegram-post-archive_love/watch_new_posts.log
+StandardError=append:/home/deploy/app/telegram-post-archive_love/watch_new_posts.log
+
+[Install]
+WantedBy=multi-user.target

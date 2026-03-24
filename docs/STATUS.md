@@ -15,6 +15,7 @@
 - подтверждён и использован публичный плейлист `Sheshenin/1001` как источник всех `50` Yandex Music треков.
 - добавлен live watcher без cron для ожидания новых постов и немедленной отправки в MAX.
 - добавлен live resolver `title -> Yandex track URL` для новых podcast-постов.
+- подготовлен и установлен `systemd` unit для daemon/autostart режима watcher после перезагрузки.
 
 Первый реальный прогон выполнен `2026-03-24`.
 
@@ -46,6 +47,8 @@
 - `podcast_links.py` для live-подмены `mavestreambot` ссылок по названию эпизода из самого Telegram-поста.
 - `podcast_links.py` умеет искать точный `music.yandex.ru/album/.../track/...` в Yandex search.
 - `podcast_links.py` отличает реальные episode-posts от обычных CTA-постов с podcast-ссылкой.
+- `deploy/systemd/telegram-post-archive-love-watcher.service` описывает постоянный запуск watcher через внешний env-файл `/etc/telegram-post-archive-love-watcher.env`.
+- `telegram-post-archive-love-watcher.service` уже включён через `systemctl enable --now` и находится в состоянии `active (running)`.
 
 ## Git-статус
 
@@ -88,6 +91,7 @@ python3 parser.py --channel andrey_i_vika --start 4 --end 158 --db posts.db
 - повторная проверка базы после замены ссылок и отсутствие оставшихся `mavestreambot` podcast URL.
 - долгий live-run `watch_new_posts.py` против реально появляющихся новых постов канала.
 - автоматический `title -> Yandex track URL` поиск для абсолютно нового выпуска, которого ещё нет в локальном `yandex_album_tracks.json`.
+- реальная проверка `systemd`-автозапуска watcher после полного reboot.
 
 ## Ближайшая проверка
 
@@ -178,3 +182,13 @@ python podcast_link_mapper.py \
 - на основном сервере Yandex search может упираться в region block;
 - для этого live-контур поддерживает поиск через альтернативный SSH-host;
 - если точный матч в Yandex search не найден, watcher не подставляет фиктивную ссылку.
+
+## Daemon mode
+
+Для постоянной работы watcher подготовлен под `systemd`:
+
+- unit-шаблон лежит в `deploy/systemd/telegram-post-archive-love-watcher.service`;
+- секреты вынесены из git в `/etc/telegram-post-archive-love-watcher.env`;
+- рабочий лог сервиса пишется в `/home/deploy/app/telegram-post-archive_love/watch_new_posts.log`;
+- целевой режим: `Restart=always`, `WantedBy=multi-user.target`.
+- фактически установленный сервис уже ждёт следующий пост `159`.

@@ -48,8 +48,11 @@
 - [x] Переключить live-подмену podcast-ссылок на поиск по названию эпизода из самого Telegram-поста
 - [x] Добавить exact `title -> Yandex track URL` resolver для новых выпусков
 - [x] Зафиксировать правило, что не каждый post с `mavestreambot` ссылкой является episode-post
+- [x] Подготовить `systemd` unit для постоянного daemon/autostart запуска watcher
+- [x] Установить и включить `telegram-post-archive-love-watcher.service`
 - [ ] Проверить `watch_new_posts.py` на реальном новом посте канала
 - [ ] Проверить fallback-поиск в Yandex search через альтернативный SSH-host на реальном новом выпуске
+- [ ] Проверить автозапуск watcher после reboot
 
 ## Следующий шаг
 
@@ -62,3 +65,4 @@
 - для ongoing-режима не использовать cron: держать живой процесс ожидания следующего `post_id`.
 - для live-режима брать название эпизода прямо из Telegram-поста и искать Yandex track URL по этому названию.
 - episode-post определять только по явному anchor-анонсу `Эпизод N...`, а не по любой podcast-ссылке.
+- для постоянного режима запускать watcher как `systemd`-сервис с внешним env-файлом, не храня секреты в git.
