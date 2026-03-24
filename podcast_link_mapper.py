@@ -10,18 +10,28 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 from bs4 import BeautifulSoup
 
 
 LOGGER = logging.getLogger("podcast_link_mapper")
-EPISODE_TITLE_RE = re.compile(r"Эпизод\s*(\d+)\s*[\.:]\s*(.+)", re.IGNORECASE)
-STARTAPP_RE = re.compile(r"^lovebusiness(?:_(\d+))?(?:_player)?$")
+EPISODE_TITLE_RE = re.compile(r"Эпизод\s*(\d+)\s*[\.:]?\s*(.+)?", re.IGNORECASE)
+PODCAST_LINK_RE = re.compile(r"^https://t\.me/mavestreambot/app\?startapp=lovebusiness")
+GENERIC_ANCHOR_TEXTS = {
+    "",
+    "тык",
+    "[тык]",
+    "[",
+    "]",
+    "🎙",
+}
 
 
 @dataclass(slots=True)
 class TrackRecord:
+    playlist_index: int
+    episode_number: int
+    album_id: str
     track_id: str
     track_url: str
     title: str
@@ -30,25 +40,17 @@ class TrackRecord:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build and optionally apply safe Yandex Music replacements for Telegram podcast links.",
+        description="Build and optionally apply Yandex Music replacements for Telegram podcast links.",
     )
     parser.add_argument("--db", required=True, help="SQLite database path.")
-    parser.add_argument("--tracks-json", required=True, help="JSON file from yandex_album_scraper.py.")
+    parser.add_argument("--tracks-json", required=True, help="JSON file with collected Yandex tracks.")
     parser.add_argument(
         "--report-json",
         default="podcast_link_mapping_report.json",
         help="Where to save the mapping report.",
     )
-    parser.add_argument(
-        "--apply",
-        action="store_true",
-        help="Apply confirmed replacements into text_html/text_plain.",
-    )
-    parser.add_argument(
-        "--backup-db",
-        action="store_true",
-        help="Create a timestamped DB backup before applying replacements.",
-    )
+    parser.add_argument("--apply", action="store_true", help="Apply replacements into text_html/text_plain.")
+    parser.add_argument("--backup-db", action="store_true", help="Create a DB backup before applying.")
     return parser.parse_args()
 
 
@@ -56,7 +58,9 @@ def configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
 
-def normalize_title(value: str) -> str:
+def normalize_title(value: str | None) -> str:
+    if not value:
+        return ""
     text = value.lower()
     text = text.replace("ё", "е")
     text = text.replace("—", " ")
@@ -69,24 +73,22 @@ def normalize_title(value: str) -> str:
     return text.strip()
 
 
-def load_tracks(path: Path) -> tuple[dict[str, TrackRecord], dict[str, list[TrackRecord]]]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    tracks_by_title: dict[str, list[TrackRecord]] = {}
-    tracks_by_id: dict[str, TrackRecord] = {}
-    for item in payload:
-        title = str(item["title"]).strip()
-        track = TrackRecord(
-            track_id=str(item["track_id"]),
-            track_url=str(item["track_url"]).strip(),
-            title=title,
-            normalized_title=normalize_title(title),
-        )
-        tracks_by_id[track.track_id] = track
-        tracks_by_title.setdefault(track.normalized_title, []).append(track)
-    return tracks_by_id, tracks_by_title
+def clean_title_tail(value: str | None) -> str | None:
+    if not value:
+        return None
+    title = re.sub(r"\s+", " ", value).strip()
+    if not title:
+        return None
+    title = re.split(r"\s{2,}", title, maxsplit=1)[0]
+    title = re.split(
+        r"\b(Этот эпизод|В этом эпизоде|В этом выпуске|Почему|Что|Кто|Можно ли|А что)\b",
+        title,
+        maxsplit=1,
+    )[0].strip()
+    return title or None
 
 
-def extract_episode_title(text: str | None) -> tuple[int | None, str | None]:
+def extract_episode_number_and_title(text: str | None) -> tuple[int | None, str | None]:
     if not text:
         return None, None
     compact = re.sub(r"\s+", " ", text).strip()
@@ -94,191 +96,142 @@ def extract_episode_title(text: str | None) -> tuple[int | None, str | None]:
     if not match:
         return None, None
     episode_number = int(match.group(1))
-    title = match.group(2).strip()
-    title = re.split(r"\s{2,}| В этом эпизоде| Этот эпизод| Почему | Что | Кто ", title, maxsplit=1)[0]
-    return episode_number, title.strip()
+    title = clean_title_tail(match.group(2))
+    return episode_number, title
 
 
-def get_startapp_key(href: str) -> str | None:
-    parsed = urlparse(href)
-    query = parse_qs(parsed.query)
-    raw_startapp = query.get("startapp", [None])[0]
-    if raw_startapp is None:
-        return None
-    match = STARTAPP_RE.match(raw_startapp)
-    if not match:
-        return None
-    if raw_startapp.endswith("_player"):
-        return raw_startapp[: -len("_player")]
-    return raw_startapp
+def load_tracks(path: Path) -> dict[int, TrackRecord]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    track_count = len(payload)
+    tracks_by_episode: dict[int, TrackRecord] = {}
+    for item in payload:
+        playlist_index = int(item["playlist_index"])
+        episode_number = track_count - playlist_index + 1
+        title = str(item["title"]).strip()
+        tracks_by_episode[episode_number] = TrackRecord(
+            playlist_index=playlist_index,
+            episode_number=episode_number,
+            album_id=str(item["album_id"]),
+            track_id=str(item["track_id"]),
+            track_url=str(item["track_url"]).strip(),
+            title=title,
+            normalized_title=normalize_title(title),
+        )
+    return tracks_by_episode
 
 
-def build_candidate_map(connection: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+def infer_current_episode(soup: BeautifulSoup, text_plain: str | None) -> tuple[int | None, str | None]:
+    explicit_candidates: list[tuple[int, str | None]] = []
+    for anchor in soup.find_all("a", href=True):
+        href = str(anchor.get("href") or "").strip()
+        if not PODCAST_LINK_RE.match(href):
+            continue
+        episode_number, title = extract_episode_number_and_title(anchor.get_text(" ", strip=True))
+        if episode_number is None:
+            continue
+        explicit_candidates.append((episode_number, title))
+
+    unique_numbers = {item[0] for item in explicit_candidates}
+    if len(unique_numbers) == 1 and explicit_candidates:
+        episode_number = explicit_candidates[0][0]
+        titles = [title for _, title in explicit_candidates if title]
+        return episode_number, titles[0] if titles else None
+
+    return extract_episode_number_and_title(text_plain)
+
+
+def infer_target_episode(
+    anchor_text: str,
+    current_episode_number: int | None,
+) -> tuple[int | None, str]:
+    normalized_anchor = normalize_title(anchor_text)
+    explicit_episode_number, _ = extract_episode_number_and_title(anchor_text)
+    if explicit_episode_number is not None:
+        return explicit_episode_number, "anchor_episode_number"
+    if "первого эпизода" in normalized_anchor or "с первого эпизода" in normalized_anchor:
+        return 1, "first_episode_phrase"
+    if normalized_anchor in GENERIC_ANCHOR_TEXTS or re.fullmatch(r"[\[\]\s🎙]+", anchor_text):
+        return current_episode_number, "current_post_episode"
+    return current_episode_number, "current_post_fallback"
+
+
+def build_occurrence_report(
+    connection: sqlite3.Connection,
+    tracks_by_episode: dict[int, TrackRecord],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     rows = connection.execute(
         """
         SELECT id, telegram_post_id, text_html, text_plain
         FROM posts
-        WHERE text_html LIKE '%t.me/mavestreambot/app?startapp=lovebusiness%'
+        WHERE text_html LIKE '%https://t.me/mavestreambot/app?startapp=lovebusiness%'
         ORDER BY telegram_post_id ASC
         """
     ).fetchall()
 
-    candidate_map: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        soup = BeautifulSoup(row["text_html"] or "", "html.parser")
-        explicit_titles: dict[str, tuple[int | None, str]] = {}
-        for anchor in soup.find_all("a", href=True):
-            href = str(anchor["href"]).strip()
-            if "t.me/mavestreambot/app?startapp=lovebusiness" not in href:
-                continue
-            anchor_text = anchor.get_text(" ", strip=True)
-            link_episode_number, link_title = extract_episode_title(anchor_text)
-            if not link_title:
-                continue
-            explicit_titles.setdefault(normalize_title(link_title), (link_episode_number, link_title))
-
-        if len(explicit_titles) == 1:
-            current_episode_number, current_episode_title = next(iter(explicit_titles.values()))
-        else:
-            current_episode_number, current_episode_title = extract_episode_title(row["text_plain"])
-
-        for anchor in soup.find_all("a", href=True):
-            href = str(anchor["href"]).strip()
-            if "t.me/mavestreambot/app?startapp=lovebusiness" not in href:
-                continue
-
-            startapp_key = get_startapp_key(href)
-            if startapp_key is None:
-                continue
-
-            anchor_text = anchor.get_text(" ", strip=True)
-            link_episode_number, link_title = extract_episode_title(anchor_text)
-
-            if link_title:
-                episode_number = link_episode_number
-                candidate_title = link_title
-                source = "anchor_episode_title"
-            elif current_episode_title and anchor_text.lower() in {"тык", "", "слушать", "слушать эпизод"}:
-                episode_number = current_episode_number
-                candidate_title = current_episode_title
-                source = "current_post_title"
-            else:
-                episode_number = None
-                candidate_title = None
-                source = "unresolved_anchor"
-
-            entry = candidate_map.setdefault(
-                startapp_key,
-                {
-                    "candidate_titles": {},
-                    "source_posts": set(),
-                    "raw_links": set(),
-                    "anchor_texts": set(),
-                    "episode_numbers": set(),
-                    "unresolved_posts": set(),
-                },
-            )
-            entry["source_posts"].add(int(row["telegram_post_id"]))
-            entry["raw_links"].add(href)
-            if anchor_text:
-                entry["anchor_texts"].add(anchor_text)
-            if episode_number is not None:
-                entry["episode_numbers"].add(int(episode_number))
-            if candidate_title:
-                normalized = normalize_title(candidate_title)
-                bucket = entry["candidate_titles"].setdefault(
-                    normalized,
-                    {"title": candidate_title, "sources": set(), "source_kinds": set()},
-                )
-                bucket["sources"].add(int(row["telegram_post_id"]))
-                bucket["source_kinds"].add(source)
-            else:
-                entry["unresolved_posts"].add(int(row["telegram_post_id"]))
-    return candidate_map
-
-
-def build_resolutions(
-    candidate_map: dict[str, dict[str, Any]],
-    tracks_by_title: dict[str, list[TrackRecord]],
-) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
-    resolved: dict[str, dict[str, Any]] = {}
+    resolved: list[dict[str, Any]] = []
     unresolved: list[dict[str, Any]] = []
 
-    for startapp_key, entry in sorted(candidate_map.items()):
-        candidate_titles = entry["candidate_titles"]
-        if len(candidate_titles) != 1 or entry["unresolved_posts"]:
-            unresolved.append(
-                {
-                    "startapp_key": startapp_key,
-                    "reason": (
-                        "contains_unresolved_occurrences"
-                        if entry["unresolved_posts"]
-                        else "ambiguous_or_missing_candidate_title"
-                    ),
-                    "candidate_titles": [
-                        {
-                            "title": item["title"],
-                            "sources": sorted(item["sources"]),
-                            "source_kinds": sorted(item["source_kinds"]),
-                        }
-                        for item in candidate_titles.values()
-                    ],
-                    "source_posts": sorted(entry["source_posts"]),
-                    "unresolved_posts": sorted(entry["unresolved_posts"]),
-                    "raw_links": sorted(entry["raw_links"]),
-                    "anchor_texts": sorted(entry["anchor_texts"]),
-                    "episode_numbers": sorted(entry["episode_numbers"]),
-                }
-            )
-            continue
+    for row in rows:
+        text_html = row["text_html"] or ""
+        soup = BeautifulSoup(text_html, "html.parser")
+        current_episode_number, current_episode_title = infer_current_episode(soup, row["text_plain"])
 
-        normalized_title, item = next(iter(candidate_titles.items()))
-        tracks = tracks_by_title.get(normalized_title, [])
-        if len(tracks) != 1:
-            unresolved.append(
-                {
-                    "startapp_key": startapp_key,
-                    "reason": "track_title_not_unique_or_missing",
-                    "candidate_title": item["title"],
-                    "matching_tracks": [
-                        {"track_id": track.track_id, "track_url": track.track_url, "title": track.title}
-                        for track in tracks
-                    ],
-                    "source_posts": sorted(entry["source_posts"]),
-                    "unresolved_posts": sorted(entry["unresolved_posts"]),
-                    "raw_links": sorted(entry["raw_links"]),
-                    "anchor_texts": sorted(entry["anchor_texts"]),
-                    "episode_numbers": sorted(entry["episode_numbers"]),
-                }
-            )
-            continue
+        link_index = 0
+        for anchor in soup.find_all("a", href=True):
+            href = str(anchor.get("href") or "").strip()
+            if not PODCAST_LINK_RE.match(href):
+                continue
 
-        track = tracks[0]
-        resolved[startapp_key] = {
-            "startapp_key": startapp_key,
-            "candidate_title": item["title"],
-            "normalized_title": normalized_title,
-            "track_id": track.track_id,
-            "track_url": track.track_url,
-            "track_title": track.title,
-            "source_posts": sorted(entry["source_posts"]),
-            "raw_links": sorted(entry["raw_links"]),
-            "anchor_texts": sorted(entry["anchor_texts"]),
-            "episode_numbers": sorted(entry["episode_numbers"]),
-        }
+            link_index += 1
+            anchor_text = anchor.get_text(" ", strip=True)
+            target_episode_number, source = infer_target_episode(anchor_text, current_episode_number)
+
+            entry = {
+                "post_id": int(row["telegram_post_id"]),
+                "db_row_id": int(row["id"]),
+                "link_index": link_index,
+                "raw_link": href,
+                "anchor_text": anchor_text,
+                "current_episode_number": current_episode_number,
+                "current_episode_title": current_episode_title,
+                "target_episode_number": target_episode_number,
+                "resolution_source": source,
+            }
+
+            if target_episode_number is None:
+                entry["reason"] = "missing_target_episode_number"
+                unresolved.append(entry)
+                continue
+
+            track = tracks_by_episode.get(target_episode_number)
+            if track is None:
+                entry["reason"] = "episode_not_found_in_playlist"
+                unresolved.append(entry)
+                continue
+
+            explicit_number, explicit_title = extract_episode_number_and_title(anchor_text)
+            if explicit_number is not None and explicit_title:
+                if normalize_title(explicit_title) != track.normalized_title:
+                    entry["reason"] = "explicit_title_mismatch"
+                    entry["expected_track_title"] = track.title
+                    unresolved.append(entry)
+                    continue
+
+            entry["track_title"] = track.title
+            entry["track_url"] = track.track_url
+            entry["track_id"] = track.track_id
+            entry["playlist_index"] = track.playlist_index
+            resolved.append(entry)
+
     return resolved, unresolved
 
 
-def write_report(
-    report_path: Path,
-    resolved: dict[str, dict[str, Any]],
-    unresolved: list[dict[str, Any]],
-) -> None:
+def write_report(report_path: Path, resolved: list[dict[str, Any]], unresolved: list[dict[str, Any]]) -> None:
     payload = {
         "generated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         "resolved_count": len(resolved),
         "unresolved_count": len(unresolved),
-        "resolved": [resolved[key] for key in sorted(resolved)],
+        "resolved": resolved,
         "unresolved": unresolved,
     }
     report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -291,41 +244,42 @@ def backup_database(db_path: Path) -> Path:
     return backup_path
 
 
-def apply_replacements(
-    connection: sqlite3.Connection,
-    resolved: dict[str, dict[str, Any]],
-) -> dict[str, int]:
-    rows = connection.execute(
-        """
-        SELECT id, text_html, text_plain
-        FROM posts
-        WHERE text_html LIKE '%t.me/mavestreambot/app?startapp=lovebusiness%'
-        """
-    ).fetchall()
+def apply_replacements(connection: sqlite3.Connection, resolved: list[dict[str, Any]]) -> dict[str, int]:
+    resolved_by_post: dict[int, list[dict[str, Any]]] = {}
+    for item in resolved:
+        resolved_by_post.setdefault(int(item["db_row_id"]), []).append(item)
 
     updated_posts = 0
     html_replacements = 0
     plain_replacements = 0
 
-    for row in rows:
+    for row_id, replacements in resolved_by_post.items():
+        row = connection.execute(
+            "SELECT text_html, text_plain FROM posts WHERE id = ?",
+            (row_id,),
+        ).fetchone()
+        if row is None:
+            continue
+
         text_html = row["text_html"] or ""
         text_plain = row["text_plain"] or ""
         new_html = text_html
         new_plain = text_plain
 
-        for info in resolved.values():
-            for raw_link in info["raw_links"]:
-                if raw_link in new_html:
-                    new_html = new_html.replace(raw_link, info["track_url"])
-                    html_replacements += 1
-                if raw_link in new_plain:
-                    new_plain = new_plain.replace(raw_link, info["track_url"])
-                    plain_replacements += 1
+        for replacement in replacements:
+            raw_link = str(replacement["raw_link"])
+            target_link = str(replacement["track_url"])
+            if raw_link in new_html:
+                new_html = new_html.replace(raw_link, target_link)
+                html_replacements += 1
+            if raw_link in new_plain:
+                new_plain = new_plain.replace(raw_link, target_link)
+                plain_replacements += 1
 
         if new_html != text_html or new_plain != text_plain:
             connection.execute(
                 "UPDATE posts SET text_html = ?, text_plain = ? WHERE id = ?",
-                (new_html, new_plain, int(row["id"])),
+                (new_html, new_plain, row_id),
             )
             updated_posts += 1
 
@@ -345,17 +299,16 @@ def main() -> int:
     tracks_path = Path(args.tracks_json)
     report_path = Path(args.report_json)
 
-    _, tracks_by_title = load_tracks(tracks_path)
+    tracks_by_episode = load_tracks(tracks_path)
 
     connection = sqlite3.connect(db_path)
     connection.row_factory = sqlite3.Row
     try:
-        candidate_map = build_candidate_map(connection)
-        resolved, unresolved = build_resolutions(candidate_map, tracks_by_title)
+        resolved, unresolved = build_occurrence_report(connection, tracks_by_episode)
         write_report(report_path, resolved, unresolved)
 
-        LOGGER.info("Resolved podcast link keys: %s", len(resolved))
-        LOGGER.info("Unresolved podcast link keys: %s", len(unresolved))
+        LOGGER.info("Resolved podcast links: %s", len(resolved))
+        LOGGER.info("Unresolved podcast links: %s", len(unresolved))
         LOGGER.info("Saved report: %s", report_path)
 
         if not args.apply:

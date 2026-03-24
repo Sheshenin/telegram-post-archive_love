@@ -12,6 +12,7 @@
 - GitHub-репозиторий для этого клона создан.
 - добавлен интерактивный Playwright-сценарий для сбора названий и ссылок треков с альбома Яндекс Музыки.
 - добавлен безопасный `podcast_link_mapper.py` для title-based замены podcast-ссылок в `posts.db`.
+- подтверждён и использован публичный плейлист `Sheshenin/1001` как источник всех `50` Yandex Music треков.
 
 Первый реальный прогон выполнен `2026-03-24`.
 
@@ -78,6 +79,7 @@ python3 parser.py --channel andrey_i_vika --start 4 --end 158 --db posts.db
 - канонический public permalink MAX для опубликованных сообщений, если API не отдаёт `url`.
 - полный интерактивный прогон `yandex_album_scraper.py` против живой captcha-сессии Yandex Music.
 - фактический preview/apply прогон `podcast_link_mapper.py` против реального `yandex_album_tracks.json`.
+- повторная проверка базы после замены ссылок и отсутствие оставшихся `mavestreambot` podcast URL.
 
 ## Ближайшая проверка
 
@@ -124,3 +126,24 @@ python podcast_link_mapper.py \
 - сколько `resolved` и `unresolved` ключей попало в отчёт;
 - нет ли ambiguous match по названиям;
 - перед `--apply` устраивает ли отчёт по ранним edge-case ссылкам.
+
+## Фактический результат замены podcast-ссылок
+
+Источник треков:
+
+- публичный плейлист `https://music.yandex.ru/iframe/playlist/Sheshenin/1001`
+- подтверждённый размер: `50` треков
+- порядок обратный относительно номеров эпизодов:
+  `эпизод 1 -> последний трек`, `эпизод 50 -> первый трек`
+
+Результат apply-прогона:
+
+- `resolved podcast links`: `102`
+- `unresolved podcast links`: `0`
+- обновлено постов: `50`
+- осталось Telegram podcast-ссылок `mavestreambot`: `0`
+- постов с Yandex track URL: `50`
+
+Локальный backup перед заменой:
+
+- `posts_backup_before_podcast_links_20260324_190626.db`
