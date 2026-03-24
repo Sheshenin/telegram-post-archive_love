@@ -10,6 +10,7 @@
 - локальная база `posts.db` создана первым controlled-run;
 - зафиксирован диапазон первого controlled-run: `4..158`;
 - GitHub-репозиторий для этого клона создан.
+- добавлен интерактивный Playwright-сценарий для сбора названий и ссылок треков с альбома Яндекс Музыки.
 
 Первый реальный прогон выполнен `2026-03-24`.
 
@@ -35,6 +36,7 @@
 - режимы `dry-run` и `limit`;
 - логирование формата `[LEVEL] message`;
 - `.gitignore` и базовая документация для отдельного git-репозитория.
+- `yandex_album_scraper.py` для интерактивного получения `track_id`, `track_url`, `title` с альбома Яндекс Музыки.
 
 ## Git-статус
 
@@ -72,6 +74,7 @@ python3 parser.py --channel andrey_i_vika --start 4 --end 158 --db posts.db
 - реальный MAX API flow против живого токена и чата;
 - точный формат ответа `/uploads` и `/messages` на production-аккаунте MAX.
 - канонический public permalink MAX для опубликованных сообщений, если API не отдаёт `url`.
+- полный интерактивный прогон `yandex_album_scraper.py` против живой captcha-сессии Yandex Music.
 
 ## Ближайшая проверка
 
@@ -89,3 +92,17 @@ python parser.py --channel andrey_i_vika --start 4 --end 158 --db posts.db
 - корректность `media_type` и `media_urls`;
 - корректность авто-остановки на крае канала;
 - наличие записей `missing` для несуществующих постов.
+
+Для интерактивного сбора треков Яндекс Музыки:
+
+```bash
+python yandex_album_scraper.py \
+  --album-url "https://music.yandex.ru/album/36214929?utm_source=web&utm_medium=copy_link"
+```
+
+После запуска проверить:
+
+- открывается ли headed Chromium;
+- удаётся ли пройти login/captcha;
+- сохраняются ли `yandex_album_tracks.json` и `yandex_album_tracks.csv`;
+- есть ли в результатах `track_id`, `track_url`, `title` без дублей.

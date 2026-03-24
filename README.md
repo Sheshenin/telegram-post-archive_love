@@ -31,6 +31,7 @@ telegram-post-archive_love/
   requirements.txt
   parser.py
   publish_max.py
+  yandex_album_scraper.py
   db.py
   formatter.py
   max_client.py
@@ -48,6 +49,7 @@ telegram-post-archive_love/
 - BeautifulSoup4
 - sqlite3
 - logging
+- playwright
 
 ## CLI
 
@@ -123,6 +125,32 @@ python parser.py --channel andrey_i_vika --start 4 --end 158 --db posts.db --dry
 - стартовый пост: `https://t.me/andrey_i_vika/4`
 - последний известный пост на `2026-03-24`: `https://t.me/andrey_i_vika/158`
 
+## Интерактивный сбор треков Яндекс Музыки
+
+Для задач, где нужно безопасно сопоставить Telegram podcast-ссылки и реальные Yandex Music track URL, в проект добавлен отдельный браузерный сборщик:
+
+```bash
+python yandex_album_scraper.py \
+  --album-url "https://music.yandex.ru/album/36214929?utm_source=web&utm_medium=copy_link" \
+  --proxy-server "socks5://127.0.0.1:17890" \
+  --output-json yandex_album_tracks.json \
+  --output-csv yandex_album_tracks.csv
+```
+
+Что делает скрипт:
+
+- открывает альбом в Chromium через Playwright;
+- сохраняет persistent browser profile в `.playwright-yandex-profile/`;
+- позволяет вручную пройти login/captcha в окне браузера;
+- после загрузки альбома прокручивает страницу и собирает `track_id`, `track_url`, `title`;
+- сохраняет результат сразу в JSON и CSV.
+
+Практический нюанс:
+
+- этот сценарий нужен именно для интерактивной работы с капчей и anti-bot;
+- в полностью headless-режиме на сервере Yandex Music может отдавать `SmartCaptcha`;
+- если нужен удалённый IP, можно подать `--proxy-server socks5://...` через SSH SOCKS proxy.
+
 ## Git и GitHub
 
 Проект находится в `/home/deploy/app/telegram-post-archive_love` как отдельный git-репозиторий.
@@ -177,6 +205,7 @@ python parser.py --channel andrey_i_vika --start 4 --end 158 --db posts.db --dry
 - подготовлен отдельный рабочий клон под новый канал;
 - проект успешно прогнан на канале `andrey_i_vika` в диапазоне `4..158`;
 - GitHub-репозиторий для этого клона создаётся отдельно после фиксации первого результата.
+- добавлен отдельный интерактивный сборщик треков Яндекс Музыки для безопасного построения podcast link mapping.
 
 ## Последний реальный прогон
 

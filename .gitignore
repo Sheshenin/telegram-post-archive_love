@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 *.db
+.playwright-yandex-profile/
+yandex_album_tracks.json
+yandex_album_tracks.csv
