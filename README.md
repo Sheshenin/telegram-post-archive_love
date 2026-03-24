@@ -31,6 +31,8 @@ telegram-post-archive_love/
   requirements.txt
   parser.py
   publish_max.py
+  watch_new_posts.py
+  podcast_links.py
   yandex_album_scraper.py
   podcast_link_mapper.py
   db.py
@@ -83,6 +85,19 @@ python publish_max.py \
   --delay-min 3.0 \
   --delay-max 6.0 \
   --retries 3
+```
+
+Живой монитор новых постов:
+
+```bash
+python watch_new_posts.py \
+  --channel andrey_i_vika \
+  --db posts.db \
+  --token YOUR_TOKEN \
+  --chat CHAT_ID \
+  --poll-interval 30 \
+  --yandex-ssh-host YOUR_ALT_HOST \
+  --yandex-ssh-key /path/to/key
 ```
 
 ## Данные в SQLite
@@ -152,6 +167,26 @@ python yandex_album_scraper.py \
 - в полностью headless-режиме на сервере Yandex Music может отдавать `SmartCaptcha`;
 - если нужен удалённый IP, можно подать `--proxy-server socks5://...` через SSH SOCKS proxy.
 
+## Живой монитор новых постов
+
+Для инкрементальной работы без cron в проект добавлен отдельный watcher:
+
+- ждёт ровно следующий `post_id` канала, а не стартует по расписанию;
+- как только пост появляется в `https://t.me/s/<channel>/<next_id>`, архивирует его в `posts.db`;
+- сразу после этого публикует его в MAX;
+- при рестарте продолжает с первого ещё не архивированного `post_id`.
+
+Важно:
+
+- не каждый пост с `mavestreambot` ссылкой считается выпуском;
+- live-контур считает пост выпуском только если в `mavestreambot` anchor есть явный анонс вида `Эпизод N...`;
+- если в anchor есть только `Эпизод N`, а название стоит сразу после ссылки, оно добирается из ближайших inline-соседей до первого `<br>`;
+- обычные CTA-посты вроде `с первого эпизода` не считаются выпуском и не триггерят Yandex resolver;
+- локальный кэш `yandex_album_tracks.json` используется для быстрых exact-match по названию;
+- если точного match в кэше нет, watcher ищет трек по названию в Яндекс Музыке;
+- если основной сервер Яндекс блокирует по региону, watcher может искать через альтернативный SSH-host;
+- если точный track URL не найден, watcher не выдумывает ссылку и оставляет исходную Telegram-ссылку без подмены.
+
 ## Безопасная замена podcast-ссылок в базе
 
 После сбора `yandex_album_tracks.json` можно построить безопасный mapping и, при необходимости, применить его к `posts.db`:
@@ -167,8 +202,8 @@ python podcast_link_mapper.py \
 
 - находит в базе все `https://t.me/mavestreambot/app?startapp=lovebusiness...`;
 - вычисляет целевой эпизод для каждого конкретного вхождения ссылки внутри поста;
-- использует подтверждённый обратный порядок плейлиста `Все подкасты`:
-  `эпизод 1 -> playlist_index 50`, `эпизод 50 -> playlist_index 1`;
+- использует title-based match по локальному кэшу треков;
+- при необходимости live-контур может искать точный `track URL` по названию эпизода в Яндекс Музыке.
 - дополнительно проверяет явные заголовки эпизодов в anchor text;
 - сохраняет отчёт с `resolved` и `unresolved` кейсами по каждой ссылке;
 - в режиме `--apply` переписывает только подтверждённые ссылки.
@@ -243,6 +278,7 @@ python podcast_link_mapper.py \
 - подтверждён публичный плейлист `https://music.yandex.ru/iframe/playlist/Sheshenin/1001` с полными `50` треками;
 - собран `yandex_album_tracks.json`/`csv` из API плейлиста;
 - все podcast-ссылки `mavestreambot` в `posts.db` заменены на `music.yandex.ru/album/36214929/track/...`.
+- для live-режима добавлен `watch_new_posts.py`, который ждёт новые посты без cron и ищет Yandex track URL по названию эпизода из самого Telegram-поста.
 
 ## Последний реальный прогон
 

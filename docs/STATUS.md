@@ -13,6 +13,8 @@
 - добавлен интерактивный Playwright-сценарий для сбора названий и ссылок треков с альбома Яндекс Музыки.
 - добавлен безопасный `podcast_link_mapper.py` для title-based замены podcast-ссылок в `posts.db`.
 - подтверждён и использован публичный плейлист `Sheshenin/1001` как источник всех `50` Yandex Music треков.
+- добавлен live watcher без cron для ожидания новых постов и немедленной отправки в MAX.
+- добавлен live resolver `title -> Yandex track URL` для новых podcast-постов.
 
 Первый реальный прогон выполнен `2026-03-24`.
 
@@ -40,6 +42,10 @@
 - `.gitignore` и базовая документация для отдельного git-репозитория.
 - `yandex_album_scraper.py` для интерактивного получения `track_id`, `track_url`, `title` с альбома Яндекс Музыки.
 - `podcast_link_mapper.py` для безопасного сопоставления `lovebusiness...` ссылок с Yandex Music track URL.
+- `watch_new_posts.py` для бесконечного ожидания следующего поста, записи в SQLite и немедленной отправки в MAX.
+- `podcast_links.py` для live-подмены `mavestreambot` ссылок по названию эпизода из самого Telegram-поста.
+- `podcast_links.py` умеет искать точный `music.yandex.ru/album/.../track/...` в Yandex search.
+- `podcast_links.py` отличает реальные episode-posts от обычных CTA-постов с podcast-ссылкой.
 
 ## Git-статус
 
@@ -80,6 +86,8 @@ python3 parser.py --channel andrey_i_vika --start 4 --end 158 --db posts.db
 - полный интерактивный прогон `yandex_album_scraper.py` против живой captcha-сессии Yandex Music.
 - фактический preview/apply прогон `podcast_link_mapper.py` против реального `yandex_album_tracks.json`.
 - повторная проверка базы после замены ссылок и отсутствие оставшихся `mavestreambot` podcast URL.
+- долгий live-run `watch_new_posts.py` против реально появляющихся новых постов канала.
+- автоматический `title -> Yandex track URL` поиск для абсолютно нового выпуска, которого ещё нет в локальном `yandex_album_tracks.json`.
 
 ## Ближайшая проверка
 
@@ -147,3 +155,26 @@ python podcast_link_mapper.py \
 Локальный backup перед заменой:
 
 - `posts_backup_before_podcast_links_20260324_190626.db`
+
+## Live monitoring
+
+Новая целевая схема для ongoing-режима:
+
+- не cron;
+- не batch range parser;
+- watcher ждёт публикации ровно следующего `post_id` канала;
+- как только пост появляется, он сразу архивируется в `posts.db` и уходит в MAX;
+- название эпизода берётся из самого Telegram-поста, а не из Mave или плейлиста.
+
+Правило определения episode-post:
+
+- наличие любой `mavestreambot` ссылки само по себе недостаточно;
+- выпуском считается только пост, где есть явный anchor-анонс `Эпизод N...`;
+- если название стоит не внутри anchor, а сразу после него, оно добирается из ближайших inline-соседей;
+- CTA-посты вроде `Начните с первого эпизода` не считаются выпуском и не запускают поиск в Яндекс Музыке.
+
+Текущий нюанс:
+
+- на основном сервере Yandex search может упираться в region block;
+- для этого live-контур поддерживает поиск через альтернативный SSH-host;
+- если точный матч в Yandex search не найден, watcher не подставляет фиктивную ссылку.
