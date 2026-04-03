@@ -52,6 +52,7 @@
 - [x] Установить и включить `telegram-post-archive-love-watcher.service`
 - [x] Исправить recovery-path для archived-but-unpublished записей watcher
 - [x] Перевести MAX env на numeric `chat_id` из `GET /chats`
+- [x] Починить SSH fallback live-поиска новых эпизодов в Яндекс Музыке
 - [ ] Проверить `watch_new_posts.py` на реальном новом посте канала
 - [ ] Проверить fallback-поиск в Yandex search через альтернативный SSH-host на реальном новом выпуске
 - [ ] Проверить автозапуск watcher после reboot

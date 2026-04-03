@@ -18,6 +18,7 @@
 - подготовлен и установлен `systemd` unit для daemon/autostart режима watcher после перезагрузки.
 - исправлен live-recovery для already-archived, but unpublished post'ов; watcher теперь догоняет такие записи при старте.
 - найден и исправлен неверный формат `MAX_CHAT_ID`: для MAX API нужен numeric `chat_id` из `GET /chats`, а не публичный `id...` slug.
+- исправлен SSH fallback для live-поиска в Яндекс Музыке: удалённый Python теперь передаётся через `stdin`, а не как хрупкий `python3 -c ...`.
 
 Первый реальный прогон выполнен `2026-03-24`.
 
@@ -203,6 +204,7 @@ python podcast_link_mapper.py \
 - watcher теперь при старте выбирает минимальный unpublished success-post и повторяет delivery;
 - ошибки MAX API теперь логируются с телом ответа, а не как безликий `HTTP Error 400`;
 - для `159..161` обновлены протухшие Telegram media URLs и backlog успешно догнан.
+- для новых выпусков починен SSH fallback поиска в Яндекс Музыке; проверка на `Из мечты в стратегию` теперь возвращает `track/149770043`.
 
 ## Daemon mode
 

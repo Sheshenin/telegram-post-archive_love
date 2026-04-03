@@ -197,21 +197,29 @@ class YandexMusicResolver:
         if not self.ssh_host:
             return None
         remote_python = (
-            "import urllib.parse, urllib.request;"
-            f"q=urllib.parse.quote({query!r});"
-            "url=f'https://music.yandex.ru/search?text={q}';"
-            "req=urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0'});"
-            "html=urllib.request.urlopen(req, timeout=20).read().decode('utf-8', errors='replace');"
-            "print(html)"
+            "import urllib.parse, urllib.request\n"
+            f"query = {query!r}\n"
+            "q = urllib.parse.quote(query)\n"
+            "url = f'https://music.yandex.ru/search?text={q}'\n"
+            "req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})\n"
+            "html = urllib.request.urlopen(req, timeout=20).read().decode('utf-8', errors='replace')\n"
+            "print(html)\n"
         )
         command = ["ssh"]
         if self.ssh_key_path:
             command.extend(["-i", self.ssh_key_path])
         command.append(f"{self.ssh_user}@{self.ssh_host}")
-        command.extend(["python3", "-c", remote_python])
+        command.extend(["python3", "-"])
 
         try:
-            result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=40)
+            result = subprocess.run(
+                command,
+                input=remote_python,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=40,
+            )
             return result.stdout
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning("Remote Yandex search failed for %r: %s", query, exc)
