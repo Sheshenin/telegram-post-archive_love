@@ -16,6 +16,8 @@
 - добавлен live watcher без cron для ожидания новых постов и немедленной отправки в MAX.
 - добавлен live resolver `title -> Yandex track URL` для новых podcast-постов.
 - подготовлен и установлен `systemd` unit для daemon/autostart режима watcher после перезагрузки.
+- исправлен live-recovery для already-archived, but unpublished post'ов; watcher теперь догоняет такие записи при старте.
+- найден и исправлен неверный формат `MAX_CHAT_ID`: для MAX API нужен numeric `chat_id` из `GET /chats`, а не публичный `id...` slug.
 
 Первый реальный прогон выполнен `2026-03-24`.
 
@@ -49,6 +51,7 @@
 - `podcast_links.py` отличает реальные episode-posts от обычных CTA-постов с podcast-ссылкой.
 - `deploy/systemd/telegram-post-archive-love-watcher.service` описывает постоянный запуск watcher через внешний env-файл `/etc/telegram-post-archive-love-watcher.env`.
 - `telegram-post-archive-love-watcher.service` уже включён через `systemctl enable --now` и находится в состоянии `active (running)`.
+- по состоянию на `2026-04-03` сервис работает с корректным `MAX_CHAT_ID=-70411322548408`.
 
 ## Git-статус
 
@@ -182,6 +185,24 @@ python podcast_link_mapper.py \
 - на основном сервере Yandex search может упираться в region block;
 - для этого live-контур поддерживает поиск через альтернативный SSH-host;
 - если точный матч в Yandex search не найден, watcher не подставляет фиктивную ссылку.
+
+## Инцидент 2026-04-03
+
+Симптом:
+
+- новые посты `159`, `160`, `161` архивировались в SQLite, но не появлялись в MAX.
+
+Причина:
+
+- в `/etc/telegram-post-archive-love-watcher.env` был записан публичный slug `id772576559690_biz`, но `platform-api.max.ru/messages` принимает только внутренний numeric `chat_id`;
+- watcher стартовал с `max(telegram_post_id) + 1` и не возвращался к уже архивированным, но неотправленным `published_to_max = 0` записям.
+
+Что исправлено:
+
+- правильный `chat_id` получен через `GET /chats`: `-70411322548408`;
+- watcher теперь при старте выбирает минимальный unpublished success-post и повторяет delivery;
+- ошибки MAX API теперь логируются с телом ответа, а не как безликий `HTTP Error 400`;
+- для `159..161` обновлены протухшие Telegram media URLs и backlog успешно догнан.
 
 ## Daemon mode
 

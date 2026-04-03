@@ -69,6 +69,16 @@ def validate_args(args: argparse.Namespace) -> None:
 def get_next_post_id(connection, explicit_start: int | None) -> int:
     if explicit_start is not None:
         return explicit_start
+    unpublished_row = connection.execute(
+        """
+        SELECT MIN(telegram_post_id) AS next_unpublished
+        FROM posts
+        WHERE status = 'success'
+          AND COALESCE(published_to_max, 0) = 0
+        """
+    ).fetchone()
+    if unpublished_row is not None and unpublished_row["next_unpublished"] is not None:
+        return int(unpublished_row["next_unpublished"])
     row = connection.execute("SELECT COALESCE(MAX(telegram_post_id), 0) AS max_post_id FROM posts").fetchone()
     return int(row["max_post_id"]) + 1
 
@@ -109,6 +119,30 @@ def publish_single_post(connection, client: MaxClient, chat_id: str, telegram_po
     return True
 
 
+def publish_with_retries(connection, client: MaxClient, chat_id: str, telegram_post_id: int, retries: int) -> bool:
+    published = False
+    last_error = ""
+    for attempt in range(1, retries + 1):
+        try:
+            published = publish_single_post(connection, client, chat_id, telegram_post_id)
+            break
+        except Exception as exc:  # noqa: BLE001
+            last_error = " ".join(str(exc).split())[:1000]
+            if attempt >= retries:
+                break
+            time.sleep(2 ** max(attempt - 1, 0))
+
+    if not published and last_error:
+        row = connection.execute(
+            "SELECT id FROM posts WHERE telegram_post_id = ?",
+            (telegram_post_id,),
+        ).fetchone()
+        if row is not None:
+            mark_post_error(connection, int(row["id"]), last_error)
+        LOGGER.error("Post %s failed: %s", telegram_post_id, last_error)
+    return published
+
+
 def main() -> int:
     args = parse_args()
     configure_logging()
@@ -130,6 +164,11 @@ def main() -> int:
     with httpx.Client(headers=headers, follow_redirects=True) as telegram_client, MaxClient(args.token) as max_client:
         while True:
             if post_exists(connection, next_post_id):
+                unpublished = get_posts_for_max(connection, limit=1, single_post_id=next_post_id)
+                if unpublished:
+                    LOGGER.info("Post %s already archived but not published; retrying MAX delivery", next_post_id)
+                    publish_with_retries(connection, max_client, args.chat, next_post_id, args.retries)
+                    sleep_random(args.delay_min, args.delay_max)
                 next_post_id += 1
                 continue
 
@@ -178,28 +217,7 @@ def main() -> int:
             )
             connection.commit()
             LOGGER.info("Post %s archived", next_post_id)
-
-            published = False
-            last_error = ""
-            for attempt in range(1, args.retries + 1):
-                try:
-                    published = publish_single_post(connection, max_client, args.chat, next_post_id)
-                    break
-                except Exception as exc:  # noqa: BLE001
-                    last_error = " ".join(str(exc).split())[:500]
-                    if attempt >= args.retries:
-                        break
-                    time.sleep(2 ** max(attempt - 1, 0))
-
-            if not published and last_error:
-                row = connection.execute(
-                    "SELECT id FROM posts WHERE telegram_post_id = ?",
-                    (next_post_id,),
-                ).fetchone()
-                if row is not None:
-                    mark_post_error(connection, int(row["id"]), last_error)
-                LOGGER.error("Post %s failed: %s", next_post_id, last_error)
-
+            publish_with_retries(connection, max_client, args.chat, next_post_id, args.retries)
             next_post_id += 1
             sleep_random(args.delay_min, args.delay_max)
 

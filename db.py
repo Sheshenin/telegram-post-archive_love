@@ -113,6 +113,39 @@ def insert_post(connection: sqlite3.Connection, post: PostRecord) -> None:
     connection.commit()
 
 
+def update_post_content(connection: sqlite3.Connection, post: PostRecord) -> None:
+    connection.execute(
+        """
+        UPDATE posts
+        SET url = ?,
+            published_at = ?,
+            text_html = ?,
+            text_plain = ?,
+            has_media = ?,
+            media_type = ?,
+            media_urls = ?,
+            raw_html = ?,
+            status = ?,
+            error = ?
+        WHERE telegram_post_id = ?
+        """,
+        (
+            post.url,
+            post.published_at,
+            post.text_html,
+            post.text_plain,
+            int(post.has_media),
+            post.media_type,
+            post.media_urls,
+            post.raw_html,
+            post.status,
+            post.error,
+            post.telegram_post_id,
+        ),
+    )
+    connection.commit()
+
+
 def get_posts_for_max(
     connection: sqlite3.Connection,
     limit: int,

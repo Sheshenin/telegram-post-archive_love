@@ -5,6 +5,7 @@ import mimetypes
 import urllib.parse
 import urllib.request
 import uuid
+from urllib.error import HTTPError
 from typing import Any
 
 import httpx
@@ -91,8 +92,13 @@ class MaxClient:
                 "Content-Type": "application/json",
             },
         )
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
-            raw = response.read().decode("utf-8")
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                raw = response.read().decode("utf-8")
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace").strip()
+            detail = f": {body[:1000]}" if body else ""
+            raise RuntimeError(f"MAX API {exc.code} for {path}{detail}") from exc
         if not raw.strip():
             return {}
         return json.loads(raw)

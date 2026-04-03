@@ -128,6 +128,11 @@ sudo systemctl status telegram-post-archive-love-watcher.service
 - runtime env хранится в `/etc/telegram-post-archive-love-watcher.env`;
 - лог пишется в `watch_new_posts.log`.
 
+Практический нюанс для MAX:
+
+- в `MAX_CHAT_ID` нужно хранить внутренний numeric `chat_id` из `GET /chats`, а не публичный slug `id...`;
+- для канала `Дело в любви | подкаст` рабочий `chat_id` на `2026-04-03`: `-70411322548408`.
+
 ## Данные в SQLite
 
 Таблица `posts` хранит:
@@ -215,6 +220,7 @@ python yandex_album_scraper.py \
 - если основной сервер Яндекс блокирует по региону, watcher может искать через альтернативный SSH-host;
 - если точный track URL не найден, watcher не выдумывает ссылку и оставляет исходную Telegram-ссылку без подмены.
 - для постоянной работы после перезагрузки watcher можно запускать как `systemd`-сервис `telegram-post-archive-love-watcher.service` через внешний env-файл с секретами.
+- если пост уже архивирован, но публикация в MAX не удалась, watcher при следующем старте теперь сначала подбирает минимальный `published_to_max = 0` и повторяет delivery, а не перепрыгивает сразу к `max(post_id) + 1`.
 
 ## Безопасная замена podcast-ссылок в базе
 

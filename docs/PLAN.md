@@ -50,6 +50,8 @@
 - [x] Зафиксировать правило, что не каждый post с `mavestreambot` ссылкой является episode-post
 - [x] Подготовить `systemd` unit для постоянного daemon/autostart запуска watcher
 - [x] Установить и включить `telegram-post-archive-love-watcher.service`
+- [x] Исправить recovery-path для archived-but-unpublished записей watcher
+- [x] Перевести MAX env на numeric `chat_id` из `GET /chats`
 - [ ] Проверить `watch_new_posts.py` на реальном новом посте канала
 - [ ] Проверить fallback-поиск в Yandex search через альтернативный SSH-host на реальном новом выпуске
 - [ ] Проверить автозапуск watcher после reboot
